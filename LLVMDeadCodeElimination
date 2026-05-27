@@ -1,0 +1,153 @@
+// LLVM Optimiser - Dead-Code Elimination via Reachability DFS
+// DSA-2 Case Study | KL University
+
+import java.util.*;
+
+public class LLVMDeadCodeElimination {
+
+    // ─── CFG (Directed Graph) ─────────────────────────────────────────────────
+    static class CFG {
+
+        int numBlocks;
+        Map<Integer, List<Integer>> adjList;   // block → list of successors
+        String[] blockNames;
+
+        CFG(int n, String[] names) {
+            numBlocks  = n;
+            blockNames = names;
+            adjList    = new LinkedHashMap<>();
+            for (int i = 0; i < n; i++)
+                adjList.put(i, new ArrayList<>());
+        }
+
+        void addEdge(int from, int to) {
+            adjList.get(from).add(to);
+        }
+
+        // ── Print adjacency list ──────────────────────────────────────────────
+        void printCFG() {
+            System.out.println("\nCFG Adjacency List:");
+            for (int i = 0; i < numBlocks; i++) {
+                System.out.print("  " + blockNames[i] + " → ");
+                List<Integer> nbrs = adjList.get(i);
+                if (nbrs.isEmpty()) System.out.print("(no successors)");
+                else {
+                    for (int j = 0; j < nbrs.size(); j++)
+                        System.out.print(blockNames[nbrs.get(j)]
+                                + (j < nbrs.size() - 1 ? ", " : ""));
+                }
+                System.out.println();
+            }
+        }
+
+        // ── DFS from entry block ──────────────────────────────────────────────
+        boolean[] dfsReachability(int entry) {
+            boolean[] visited = new boolean[numBlocks];
+            Deque<Integer> stack = new ArrayDeque<>();
+
+            System.out.println("\n[DFS] Starting from entry block: " + blockNames[entry]);
+            stack.push(entry);
+
+            while (!stack.isEmpty()) {
+                int cur = stack.pop();
+                if (visited[cur]) continue;
+                visited[cur] = true;
+                System.out.println("  Visited: " + blockNames[cur]);
+
+                // Push successors in reverse order for natural left-to-right DFS
+                List<Integer> nbrs = adjList.get(cur);
+                for (int i = nbrs.size() - 1; i >= 0; i--)
+                    if (!visited[nbrs.get(i)])
+                        stack.push(nbrs.get(i));
+            }
+            return visited;
+        }
+
+        // ── Dead Code Elimination ─────────────────────────────────────────────
+        List<String> eliminateDeadCode(int entry) {
+            boolean[] reachable = dfsReachability(entry);
+
+            System.out.println("\n[Reachability Report]");
+            List<String> deadBlocks = new ArrayList<>();
+
+            for (int i = 0; i < numBlocks; i++) {
+                String status = reachable[i] ? "REACHABLE ✓" : "DEAD (unreachable) ✗";
+                System.out.println("  " + blockNames[i] + " : " + status);
+                if (!reachable[i]) deadBlocks.add(blockNames[i]);
+            }
+
+            System.out.println("\n[DCE Pass] Deleting dead blocks...");
+            if (deadBlocks.isEmpty()) {
+                System.out.println("  No dead code found.");
+            } else {
+                for (String b : deadBlocks)
+                    System.out.println("  Deleted: " + b
+                            + " (no incoming edge from any reachable block)");
+            }
+
+            return deadBlocks;
+        }
+    }
+
+    // ─── Main ─────────────────────────────────────────────────────────────────
+    public static void main(String[] args) {
+
+        System.out.println("=== LLVM Optimiser: Dead-Code Elimination via Reachability DFS ===");
+        System.out.println("\nFunction  : process_request");
+        System.out.println("Entry Block: B0");
+        System.out.println("Blocks     : B0, B1, B2, B3, B4, B5, B6, B7, B8");
+
+        // Block indices: B0=0, B1=1, B2=2, B3=3, B4=4, B5=5, B6=6, B7=7, B8=8
+        String[] names = {"B0","B1","B2","B3","B4","B5","B6","B7","B8"};
+        CFG cfg = new CFG(9, names);
+
+        // ── Add CFG edges ─────────────────────────────────────────────────────
+        // B0→B1, B0→B2
+        cfg.addEdge(0, 1); cfg.addEdge(0, 2);
+        // B1→B3, B1→B4
+        cfg.addEdge(1, 3); cfg.addEdge(1, 4);
+        // B2→B5
+        cfg.addEdge(2, 5);
+        // B3→B6
+        cfg.addEdge(3, 6);
+        // B4→B6
+        cfg.addEdge(4, 6);
+        // B5→B6
+        cfg.addEdge(5, 6);
+        // B6→B8
+        cfg.addEdge(6, 8);
+        // B7→B8  (B7 has no incoming edge — dead code)
+        cfg.addEdge(7, 8);
+
+        System.out.println("\nCFG Edges:");
+        System.out.println("  B0→B1, B0→B2, B1→B3, B1→B4, B2→B5,");
+        System.out.println("  B3→B6, B4→B6, B5→B6, B6→B8, B7→B8");
+        System.out.println("\nNote: B7 has ONLY an outgoing edge (B7→B8).");
+        System.out.println("      B7 has NO incoming edge from any reachable block.");
+
+        // ── Print CFG ─────────────────────────────────────────────────────────
+        cfg.printCFG();
+
+        // ── Run DCE Pass ──────────────────────────────────────────────────────
+        List<String> deadBlocks = cfg.eliminateDeadCode(0);
+
+        // ── Final Summary ─────────────────────────────────────────────────────
+        System.out.println("\n[Final CFG after DCE]");
+        System.out.print("  Reachable blocks kept : ");
+        for (String n : names)
+            if (!deadBlocks.contains(n)) System.out.print(n + " ");
+        System.out.println();
+        System.out.print("  Dead blocks removed   : ");
+        if (deadBlocks.isEmpty()) System.out.print("None");
+        else for (String b : deadBlocks) System.out.print(b + " ");
+        System.out.println();
+
+        // ── Complexity Summary ────────────────────────────────────────────────
+        System.out.println("\n=== Time Complexity Summary ===");
+        System.out.println("  DFS Traversal (reachability) : O(V + E)");
+        System.out.println("  V = 9 blocks, E = 10 edges   : O(19) for this CFG");
+        System.out.println("  Dead block deletion          : O(1) per block");
+        System.out.println("  Naive scan (all blocks)      : O(V²) — too slow for large CFGs");
+        System.out.println("  DFS-based DCE                : O(V + E) ✓ — scales for real compilers");
+    }
+}
